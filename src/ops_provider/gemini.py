@@ -6,6 +6,7 @@ does not expose tools, credentials, or infrastructure handles to the model.
 
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 
@@ -17,10 +18,11 @@ class GeminiReasoningError(RuntimeError):
 
 
 class GeminiReasoningProvider:
-    def __init__(self, model: str | None = None, api_key: str | None = None, timeout: float = 90.0):
+    def __init__(self, model: str | None = None, api_key: str | None = None, timeout: float = 90.0, retry_delays: tuple[float, ...] = (10, 30, 60)):
         self.model = model or os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
         self.api_key = api_key or os.environ.get("GEMINI_API_KEY")
         self.timeout = timeout
+        self.retry_delays = retry_delays
         if not self.api_key:
             raise RuntimeError("GEMINI_API_KEY is required for live reasoning")
 
@@ -48,14 +50,19 @@ class GeminiReasoningProvider:
             data=body,
             headers={"Content-Type": "application/json"},
         )
-        try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                payload = json.load(response)
-        except urllib.error.HTTPError as error:
-            # Keep diagnostics useful without exposing the URL, API key, or body.
-            raise GeminiReasoningError(f"Gemini request failed: HTTP {error.code}") from None
-        except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
-            raise GeminiReasoningError(f"Gemini request failed: {type(error).__name__}") from None
+        for attempt in range(len(self.retry_delays) + 1):
+            try:
+                with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                    payload = json.load(response)
+                break
+            except urllib.error.HTTPError as error:
+                # Retry only transient service unavailability; never retry auth,
+                # schema, quota, or client errors, and never expose the URL/body.
+                if error.code != 503 or attempt >= len(self.retry_delays):
+                    raise GeminiReasoningError(f"Gemini request failed: HTTP {error.code}") from None
+                time.sleep(self.retry_delays[attempt])
+            except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
+                raise GeminiReasoningError(f"Gemini request failed: {type(error).__name__}") from None
         try:
             text = payload["candidates"][0]["content"]["parts"][0]["text"]
             value = json.loads(text)

@@ -1,0 +1,9 @@
+{
+  "name": "autonomous-ops-poc-metamynd-adapter",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "@metamynd/agentsafe-guard": "0.37.4"
+  }
+}

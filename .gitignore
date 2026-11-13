@@ -5,4 +5,8 @@ __pycache__/
 .coverage
 .glasstv-ssap-key
 artifacts/
-
+node_modules/
+agent.metamynd.json
+.env
+.env.*
+!.env.example

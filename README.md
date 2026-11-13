@@ -1,6 +1,6 @@
 # Autonomous Ops POC
 
-Phase 1 is a zero-cost, local proof of concept for an autonomous first-line IT/security operations agent governed by MetaMynd. It deliberately does **not** contain an LLM agent, OpenRig, MetaMynd integration, frontend, customer connectors, or production-security claims.
+Phase 2 adds a real MetaMynd authorization boundary in front of consequential operations. It deliberately does **not** contain an LLM agent, OpenRig, frontend, customer connectors, or production-security claims.
 
 ## What Phase 1 proves
 
@@ -9,6 +9,7 @@ Phase 1 is a zero-cost, local proof of concept for an autonomous first-line IT/s
 - Python operations tools inspect real cluster state and logs.
 - The same constrained tool layer performs real deployment restart and scaling operations.
 - A reversible scale-to-zero failure is observed and remediated through the tool layer.
+- Application-facing restart/scale calls fail closed unless the remote MetaMynd gate returns `allow` or `observe`.
 
 The demo, Kubernetes API responses, pod transitions, and logs are real. Unit tests use controlled runner fixtures; the live smoke test never mocks Kubernetes.
 
@@ -32,6 +33,10 @@ make sandbox-down     # delete the kind cluster
 make unit-test        # unit tests for the operations adapter
 ```
 
+Before write commands, provision a hosted Testnet agent and place its local
+`agent.metamynd.json` at the repository root. See `docs/METAMYND_SETUP.md`. Without that
+file, the governed CLI intentionally fails closed.
+
 The first `sandbox-up` downloads container images and may take several minutes. `sandbox-test` uses the `frontend` deployment and restores its original replica count even after each normal experiment step. If interrupted during the controlled failure, run `make sandbox-reset`.
 
 ## Architecture
@@ -48,11 +53,12 @@ future agent / MetaMynd boundary (not implemented)
      kind -> ops-sandbox -> OTel Demo
 ```
 
-`KubernetesProvider` is the only operations boundary. Resource names are validated, all operations are namespace-scoped, and arbitrary shell execution is not exposed. `restart_service` and `scale_service` are the consequential methods where MetaMynd authorization must be inserted in Phase 2; no fake policy layer is present.
+`KubernetesProvider` executes only validated, namespace-scoped Kubernetes calls. `GovernedOperations` is the application-facing write boundary and invokes the official Node `@metamynd/agentsafe-guard@0.37.4` adapter in remote mode before execution. BLOCK, ESCALATE, malformed verdicts, and adapter failures execute no Kubernetes write.
 
 ## Repository layout
 
 - `src/ops_provider/` — provider protocol, structured result model, constrained Kubernetes implementation, CLI.
+- `metamynd/authorize.mjs` — minimal official SDK adapter; it does not implement MAGP signing.
 - `scripts/` — reproducible kind/Helm lifecycle and live experiment.
 - `tests/` — unit tests; no live-cluster behavior is mocked into the experiment.
 - `docs/ARCHITECTURE.md` — trust and execution boundary.
@@ -61,5 +67,4 @@ future agent / MetaMynd boundary (not implemented)
 
 ## Current limitations
 
-This is a local sandbox, not a production-secure deployment. It uses the local user's kubeconfig and kubectl subprocess, has no customer identity model, no MetaMynd authorization, no audit backend, and no endurance/chaos controller. The OpenTelemetry Demo is a representative workload, not a customer environment.
-
+This is a local sandbox, not a production-secure deployment. It uses the local user's kubeconfig and kubectl subprocess, has no customer identity model or audit backend, and no endurance/chaos controller. Real hosted MetaMynd experiments remain pending agent provisioning.

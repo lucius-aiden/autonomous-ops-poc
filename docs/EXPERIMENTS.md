@@ -21,5 +21,40 @@
 | MM-K8S-004 | READY LOCALLY | Python transport failure tests prove fail-closed control flow; hosted evidence is pending. |
 | MM-K8S-005 | CONDITIONAL | Run only if the configured hosted mandate supports genuine escalation. |
 
-The implementation is present, but no Phase 2 PASS is claimed until the real hosted
-authorization response and Kubernetes mutation/non-mutation evidence are recorded.
+## MM-K8S-001 — hosted authorized restart
+
+- **Timestamp:** 2026-11-13 (UTC)
+- **Requested action/resource:** `service.restart` / `frontend`
+- **MetaMynd verdict:** `allow`, `AUTHORIZED`; authorization ID recorded by the CLI.
+- **Infrastructure before:** deployment resourceVersion `8447`, replicas `1`, ready `1`, available `1`; pod `frontend-dd4779584-6fsqd`.
+- **Infrastructure after:** resourceVersion `10750`, replicas `1`, ready `1`, available `1`; pod identity changed; operation returned `deployment.apps/frontend restarted`.
+- **Result:** PASS. Real remote authorization preceded the real Kubernetes rollout.
+- **Limitations:** the returned response did not include a public agent DID or evidence ID.
+
+## MM-K8S-002 — scale authorization
+
+- **Timestamp:** 2026-11-13 (UTC)
+- **Requested action/resource:** `service.scale` / `frontend`, requested replicas `2`
+- **MetaMynd verdict:** `block`, `NO_PERMISSION_FOR_ACTION`.
+- **Infrastructure before/after:** resourceVersion `10750`, replicas `1`, ready `1`; unchanged.
+- **Result:** BLOCKED as designed; no Kubernetes mutation occurred.
+- **Required next step:** owner must add a narrow `service.scale` delegation/resource constraint in the MetaMynd dashboard before an authorized scale experiment can be run.
+
+## MM-K8S-003 — undelegated action
+
+- **Requested action/resource:** `permissions.update` / `frontend`
+- **MetaMynd verdict:** `block`, `NO_PERMISSION_FOR_ACTION`.
+- **Infrastructure before/after:** `10750:1:1:1` / `10750:1:1:1`.
+- **Result:** PASS. The callable request was blocked before execution.
+
+## MM-K8S-004 — fail closed
+
+- **Requested action/resource:** `service.restart` / `frontend`, adapter path intentionally invalid.
+- **Result:** PASS. The governed command exited non-zero with `GovernanceDenied`; deployment state remained `10750:1:1:1`.
+
+## MM-K8S-005 — escalation
+
+- **Requested action/resource:** `service.restart` / `frontend`, `riskLevel=high`.
+- **MetaMynd verdict:** `escalate`, `RISK_REVIEW`, escalation ID recorded by the adapter.
+- **Infrastructure before/after:** `10750:1:1:1` / `10750:1:1:1`.
+- **Result:** PASS for zero mutation while pending. No approval was performed; no execution is claimed.

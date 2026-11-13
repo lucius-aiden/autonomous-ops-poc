@@ -10,3 +10,8 @@ agent.metamynd.json
 .env
 .env.*
 !.env.example
+# Generated hosted-agent scaffold is kept locally for reference; the Python app uses
+# the pinned adapter above and must not commit generated identities or service keys.
+index.mjs
+verify-context.json
+gateway/

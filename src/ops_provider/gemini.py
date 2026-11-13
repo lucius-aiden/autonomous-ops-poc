@@ -18,7 +18,7 @@ class GeminiReasoningError(RuntimeError):
 
 class GeminiReasoningProvider:
     def __init__(self, model: str | None = None, api_key: str | None = None, timeout: float = 90.0):
-        self.model = model or os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+        self.model = model or os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
         self.api_key = api_key or os.environ.get("GEMINI_API_KEY")
         self.timeout = timeout
         if not self.api_key:
@@ -51,7 +51,10 @@ class GeminiReasoningProvider:
         try:
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
                 payload = json.load(response)
-        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, json.JSONDecodeError) as error:
+        except urllib.error.HTTPError as error:
+            # Keep diagnostics useful without exposing the URL, API key, or body.
+            raise GeminiReasoningError(f"Gemini request failed: HTTP {error.code}") from None
+        except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
             raise GeminiReasoningError(f"Gemini request failed: {type(error).__name__}") from None
         try:
             text = payload["candidates"][0]["content"]["parts"][0]["text"]

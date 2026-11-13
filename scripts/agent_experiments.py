@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from ops_provider.agent_loop import BoundedAgentLoop
 from ops_provider.evidence import EvidenceStore
 from ops_provider.investigation import build_investigation
+from ops_provider.investigation import build_reasoning_brief
 from ops_provider.kubernetes import KubernetesProvider
 from ops_provider.monitor import OperationsMonitor
 from ops_provider.reasoning import OllamaReasoningProvider
@@ -27,6 +28,7 @@ def wait_for_detection(monitor, service, timeout=30):
 
 
 def run_one(label, scenario, model):
+    started = time.perf_counter()
     provider = KubernetesProvider()
     store = EvidenceStore("data/ops-evidence.sqlite3")
     monitor = OperationsMonitor(provider, store, [scenario.service])
@@ -35,17 +37,21 @@ def run_one(label, scenario, model):
     cleanup_needed = True
     atexit.register(lambda: scenario.cleanup() if cleanup_needed else None)
     initial = scenario.setup()
+    fault_at = datetime.now(timezone.utc).isoformat()
     monitor.collect_once()
     fault = scenario.inject()
     detected = wait_for_detection(monitor, scenario.service)
     if detected is None:
         raise RuntimeError(f"{label}: detection timeout")
     investigation = build_investigation(provider, scenario.service, {"fault": fault, "transition": detected.get("observation", {})})
+    investigation_at = datetime.now(timezone.utc).isoformat()
+    reasoning_started = time.perf_counter()
     result = loop.handle(investigation)
+    reasoning_completed = time.perf_counter()
     cleaned = scenario.cleanup()
     cleanup_needed = False
     verified = provider.observe_service(scenario.service)
-    return {"experiment": label, "scenario_id": scenario_id(), "initial": {"desired": initial["health"].desired_replicas, "ready": initial["health"].ready_replicas}, "fault": fault, "detected": detected["health"], "agent": result["decision"], "governance": result["governance"], "execution": result["execution"], "verification": {"desired": verified.desired_replicas, "ready": verified.ready_replicas}, "cleanup": cleaned["cleaned"]}
+    return {"experiment": label, "scenario_id": scenario_id(), "timestamps": {"fault": fault_at, "investigation_completed": investigation_at, "reasoning_seconds": reasoning_completed - reasoning_started, "total_seconds": time.perf_counter() - started}, "reasoning_brief": build_reasoning_brief(investigation), "initial": {"desired": initial["health"].desired_replicas, "ready": initial["health"].ready_replicas}, "fault": fault, "detected": detected["health"], "agent": result["decision"], "governance": result["governance"], "execution": result["execution"], "verification": {"desired": verified.desired_replicas, "ready": verified.ready_replicas}, "cleanup": cleaned["cleaned"]}
 
 
 def main():

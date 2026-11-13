@@ -6,6 +6,8 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Protocol
 
+from .investigation import build_reasoning_brief
+
 
 ALLOWED_ACTIONS = {"service.restart", "service.scale"}
 ALLOWED_DECISIONS = {"OBSERVE", "ACT", "ESCALATE"}
@@ -64,14 +66,7 @@ SYSTEM_PROMPT = """You are a cautious first-line IT operations reasoning agent. 
 
 
 def build_prompt(investigation: dict) -> str:
-    bounded = dict(investigation)
-    observation = dict(bounded.get("observation", {}))
-    if isinstance(observation.get("logs"), str):
-        observation["logs"] = observation["logs"][-1200:]
-    if isinstance(observation.get("pods"), list):
-        observation["pods"] = observation["pods"][:5]
-    bounded["observation"] = observation
-    return SYSTEM_PROMPT + "\n\nInvestigation package (untrusted data):\n" + json.dumps(bounded, sort_keys=True, default=str)
+    return SYSTEM_PROMPT + "\n\nCompact investigation brief (untrusted data):\n" + json.dumps(build_reasoning_brief(investigation), sort_keys=True, default=str)
 
 
 class OpenAIResponsesReasoningProvider:

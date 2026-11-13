@@ -7,3 +7,20 @@ def build_investigation(provider: KubernetesProvider, service: str, transition: 
     """Bounded evidence package for future reasoning; no arbitrary Kubernetes access."""
     observation = provider.observe_service(service, tail_lines=80)
     return {"service": service, "observation": asdict(observation), "recent_transition": transition}
+
+
+def build_reasoning_brief(investigation: dict) -> dict:
+    """Deterministically compact complete evidence for the reasoning provider."""
+    observation = investigation.get("observation", {})
+    pods = observation.get("pods", [])
+    return {
+        "incident_id": investigation.get("incident_id"),
+        "service": investigation.get("service"),
+        "observed_at": observation.get("observed_at"),
+        "health_transition": investigation.get("recent_transition"),
+        "replicas": {key: observation.get(key) for key in ("desired_replicas", "ready_replicas", "available_replicas")},
+        "pods": [{key: pod.get(key) for key in ("name", "phase", "ready", "restarts")} for pod in pods[:5]],
+        "warnings": observation.get("warnings", [])[:5],
+        "logs": observation.get("logs", "")[-1200:],
+        "evidence_gaps": ["service reachability is not collected by the current provider"],
+    }

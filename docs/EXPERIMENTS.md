@@ -91,3 +91,19 @@
   harness scenario. Its appropriate remediation is `service.scale`, which MetaMynd
   correctly blocks under the unchanged mandate. A sound restart-remediable fault was not
   identified without constructing an artificial failure, so none was fabricated.
+
+## Compact reasoning/runtime follow-up
+
+- The deterministic `build_reasoning_brief()` now sends only incident/service, transition,
+  replica counts, up to five pod summaries, up to five warnings, the last 1,200 log
+  characters, timestamp and evidence gaps. Complete raw investigation evidence remains in
+  SQLite.
+- The compact brief measured approximately 2,495 characters on a worst-case 10,000-character
+  log input.
+- A standalone local `gemma2:2b` call produced a valid `OBSERVE` decision. No hosted model
+  credential was configured.
+- Repeated real AGENT-001 calls against the compact scenario brief still exceeded the
+  300-second local CPU timeout. Cleanup ran and the cluster returned to `1:1:1` each time.
+- Therefore AGENT-001/002/003/004 are not claimed as completed LLM end-to-end experiments.
+  The bounded loop, timing fields, brief capture, governance handoff and verification path
+  are implemented; the remaining blocker is inference runtime, not authorization.

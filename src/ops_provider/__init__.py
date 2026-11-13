@@ -7,5 +7,6 @@ from .investigation import build_investigation, build_reasoning_brief
 from .monitor import OperationsMonitor
 from .agent_loop import BoundedAgentLoop
 from .reasoning import InvalidDecision, OperationalDecision, OllamaReasoningProvider, OpenAIResponsesReasoningProvider, ReasoningProvider
+from .gemini import GeminiReasoningError, GeminiReasoningProvider
 
-__all__ = ["OperationsProvider", "KubernetesProvider", "GovernedOperations", "GovernanceDenied", "MetaMyndAuthorizer", "EvidenceStore", "HealthState", "classify", "build_investigation", "build_reasoning_brief", "OperationsMonitor", "BoundedAgentLoop", "InvalidDecision", "OperationalDecision", "OllamaReasoningProvider", "OpenAIResponsesReasoningProvider", "ReasoningProvider"]
+__all__ = ["OperationsProvider", "KubernetesProvider", "GovernedOperations", "GovernanceDenied", "MetaMyndAuthorizer", "EvidenceStore", "HealthState", "classify", "build_investigation", "build_reasoning_brief", "OperationsMonitor", "BoundedAgentLoop", "InvalidDecision", "OperationalDecision", "OllamaReasoningProvider", "OpenAIResponsesReasoningProvider", "ReasoningProvider", "GeminiReasoningError", "GeminiReasoningProvider"]

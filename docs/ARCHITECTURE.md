@@ -35,6 +35,23 @@ fields. It does not grant the future reasoning agent raw Kubernetes access. Scen
 injection is intentionally separate and privileged for test ground truth; it is not
 registered as an operational tool.
 
+## Bounded reasoning path
+
+```text
+investigation package (DATA)
+        -> ReasoningProvider
+        -> strict OperationalDecision validation
+        -> OBSERVE | ESCALATE | ACT
+        -> GovernedOperations -> MetaMynd -> KubernetesProvider
+        -> post-action observation + evidence
+```
+
+The reasoning provider has no shell, kubectl, Docker, credential or arbitrary HTTP tool.
+The local Ollama provider is selectable by model name; an OpenAI Responses provider is
+available only when an API key is explicitly supplied. Both return untrusted text that
+must pass the decision schema. The agent chooses the operational action; MetaMynd does
+not diagnose or choose the action, but independently enforces delegated authority.
+
 ## MetaMynd insertion point
 
 Before either write method executes, `MetaMyndAuthorizer` sends the typed action/resource request through the official Node SDK in remote mode. Only `allow` and `observe` reach `KubernetesProvider`; `block`, `escalate`, malformed results, and transport failures stop before Kubernetes. This repository does not implement a fake authorization decision.

@@ -11,6 +11,7 @@ Phase 2 adds a real MetaMynd authorization boundary in front of consequential op
 - A reversible scale-to-zero failure is observed and remediated through the tool layer.
 - Application-facing restart/scale calls fail closed unless the remote MetaMynd gate returns `allow` or `observe`.
 - A bounded monitor, deterministic health classifier, SQLite evidence store, investigation package, and isolated pod-fault scenario harness are included.
+- A strict reasoning interface and local Ollama/OpenAI provider boundary are included; live end-to-end reasoning is runtime-dependent and never bypasses MetaMynd.
 
 The demo, Kubernetes API responses, pod transitions, and logs are real. Unit tests use controlled runner fixtures; the live smoke test never mocks Kubernetes.
 

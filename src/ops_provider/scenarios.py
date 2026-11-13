@@ -36,5 +36,36 @@ class PodTerminationScenario:
         raise RuntimeError("scenario cleanup timed out")
 
 
+class ScaledToZeroScenario:
+    """Test-only non-self-healing fault; remediation would be service.scale."""
+
+    def __init__(self, provider: KubernetesProvider, service: str = "frontend"):
+        self.provider, self.service, self.original = provider, service, None
+
+    def setup(self) -> dict:
+        self.original = self.provider.observe_service(self.service)
+        if self.original.desired_replicas < 1 or self.original.ready_replicas != self.original.desired_replicas:
+            raise RuntimeError("scenario requires a healthy replicated service")
+        return {"service": self.service, "original_replicas": self.original.desired_replicas, "health": self.original}
+
+    def inject(self) -> dict:
+        if self.original is None:
+            raise RuntimeError("setup must run first")
+        self.provider.scale_service(self.service, 0)
+        return {"fault": "deployment_scaled_to_zero", "service": self.service, "original_replicas": self.original.desired_replicas}
+
+    def cleanup(self) -> dict:
+        if self.original is None:
+            raise RuntimeError("setup must run first")
+        self.provider.scale_service(self.service, self.original.desired_replicas)
+        deadline = time.time() + 120
+        while time.time() < deadline:
+            current = self.provider.observe_service(self.service)
+            if current.ready_replicas == self.original.desired_replicas and current.available_replicas == self.original.desired_replicas:
+                return {"cleaned": True, "health": current}
+            time.sleep(2)
+        raise RuntimeError("scale-to-zero cleanup timed out")
+
+
 def scenario_id() -> str:
     return f"scenario-{uuid.uuid4().hex[:12]}"

@@ -74,3 +74,20 @@
 - **Status:** PASS.
 - **Limitation:** this tests detection and platform recovery, not diagnosis or authorized
   agent remediation.
+
+## Agent reasoning milestone
+
+- **Provider:** local Ollama, installed `gemma2:2b` and `qwen2.5:7b-instruct-q4_K_M` models.
+- **Standalone provider smoke:** a compact real investigation produced a schema-valid
+  `OBSERVE` decision from `gemma2:2b`; no infrastructure tool was available to that call.
+- **AGENT-001/002/003 end-to-end status:** not passed. Real scenario calls with the full
+  investigation package exceeded the local CPU model runtime timeout (300 seconds).
+  The scenario harness cleanup ran and Kubernetes remained healthy (`1:1:1`) after each
+  attempt. This is recorded as a runtime limitation, not converted into a synthetic pass.
+- **Reasoning implementation status:** schema, prompt, provider interface, Ollama/OpenAI
+  adapters, validation, ACT/OBSERVE/ESCALATE loop, governance handoff and post-action
+  verification are implemented and unit-tested.
+- **Intervention scenario:** scale-to-zero is implemented as a real non-self-healing
+  harness scenario. Its appropriate remediation is `service.scale`, which MetaMynd
+  correctly blocks under the unchanged mandate. A sound restart-remediable fault was not
+  identified without constructing an artificial failure, so none was fabricated.

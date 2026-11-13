@@ -24,9 +24,9 @@ class MetaMyndAuthorizer:
         self.node = node or os.environ.get('METAMYND_NODE', 'node')
         self.adapter = adapter or os.environ.get('METAMYND_ADAPTER', './metamynd/authorize.mjs')
 
-    def authorize(self, action: str, resource: str) -> dict:
+    def authorize(self, action: str, resource: str, context: dict | None = None) -> dict:
         request = json.dumps({'action': action, 'resource': resource, 'context': {
-            'source': 'autonomous-ops-poc', 'riskLevel': 'low'
+            'source': 'autonomous-ops-poc', 'riskLevel': 'low', **(context or {})
         }})
         completed = self.runner([self.node, self.adapter], input=request, capture_output=True, text=True, check=False)
         if completed.returncode:
@@ -45,18 +45,18 @@ class GovernedOperations:
         self.provider = provider
         self.authorizer = authorizer
 
-    def _authorize(self, action: str, resource: str) -> dict:
-        verdict = self.authorizer.authorize(action, resource)
+    def _authorize(self, action: str, resource: str, context: dict | None = None) -> dict:
+        verdict = self.authorizer.authorize(action, resource) if context is None else self.authorizer.authorize(action, resource, context)
         if verdict['decision'] not in {'allow', 'observe'}:
             raise GovernanceDenied(verdict)
         return verdict
 
-    def restart_service(self, service: str) -> dict:
-        verdict = self._authorize('service.restart', service)
+    def restart_service(self, service: str, context: dict | None = None) -> dict:
+        verdict = self._authorize('service.restart', service, context)
         result = self.provider.restart_service(service)
         return {'authorization': verdict, 'operation': asdict(result)}
 
-    def scale_service(self, service: str, replicas: int) -> dict:
-        verdict = self._authorize('service.scale', service)
+    def scale_service(self, service: str, replicas: int, context: dict | None = None) -> dict:
+        verdict = self._authorize('service.scale', service, context)
         result = self.provider.scale_service(service, replicas)
         return {'authorization': verdict, 'operation': asdict(result)}

@@ -17,6 +17,24 @@ Operations call
 
 The provider is restricted to `ops-sandbox`, validates Kubernetes DNS resource names, caps scale at ten replicas, and exposes only read operations plus `restart_service` and `scale_service`. There is no arbitrary command method. `GovernedOperations` is the application-facing write path.
 
+## Observation and evidence path
+
+```text
+KubernetesProvider.observe_service
+        |
+        v
+bounded ServiceObservation -> deterministic classifier -> SQLite EvidenceStore
+                                      |
+                                      +-> incident + investigation package
+
+test-only ScenarioHarness -> real reversible fault -> same observation path -> evaluator
+```
+
+The monitor collects only selected deployment, pod, restart-count, warning-event and log
+fields. It does not grant the future reasoning agent raw Kubernetes access. Scenario
+injection is intentionally separate and privileged for test ground truth; it is not
+registered as an operational tool.
+
 ## MetaMynd insertion point
 
 Before either write method executes, `MetaMyndAuthorizer` sends the typed action/resource request through the official Node SDK in remote mode. Only `allow` and `observe` reach `KubernetesProvider`; `block`, `escalate`, malformed results, and transport failures stop before Kubernetes. This repository does not implement a fake authorization decision.

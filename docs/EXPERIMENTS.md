@@ -58,3 +58,19 @@
 - **MetaMynd verdict:** `escalate`, `RISK_REVIEW`, escalation ID recorded by the adapter.
 - **Infrastructure before/after:** `10750:1:1:1` / `10750:1:1:1`.
 - **Result:** PASS for zero mutation while pending. No approval was performed; no execution is claimed.
+
+## OBS-001 — monitored pod termination lifecycle
+
+- **Scenario ID:** `scenario-b866bb87c3ca`
+- **Objective:** verify real fault observation, incident/evidence creation, investigation
+  packaging and workload recovery without an agent remediation action.
+- **Fault:** test-only harness deleted pod `frontend-79c594dcbc-nmsld` in `ops-sandbox`.
+- **Detection:** classified `UNHEALTHY`; detection latency `0.819332s`.
+- **Investigation:** collected bounded deployment/pod/restart/event/log evidence and stored
+  it in SQLite; an incident was opened and later resolved.
+- **Recovery:** Kubernetes recreated the pod; final state `1/1` healthy; recovery latency
+  `3.580278s`.
+- **Unexpected mutation:** false. The only intentional mutation was the harness pod delete.
+- **Status:** PASS.
+- **Limitation:** this tests detection and platform recovery, not diagnosis or authorized
+  agent remediation.

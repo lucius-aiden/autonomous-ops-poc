@@ -10,7 +10,7 @@ import re
 import subprocess
 from typing import Sequence
 
-from .models import OperationResult
+from .models import OperationResult, ServiceObservation
 
 
 _NAME = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
@@ -72,6 +72,37 @@ class KubernetesProvider:
         if not isinstance(tail_lines, int) or not 1 <= tail_lines <= 1000:
             raise ValueError("tail_lines must be between 1 and 1000")
         return self._run(["-n", self.namespace, "logs", f"deployment/{service}", f"--tail={tail_lines}"], json_output=False)
+
+    def observe_service(self, service: str, tail_lines: int = 40) -> ServiceObservation:
+        """Collect a bounded, structured read-only investigation snapshot."""
+        service = self._name(service, "service")
+        deployment = self._run(["-n", self.namespace, "get", "deployment", service, "-o", "json"])
+        pods = self._run(["-n", self.namespace, "get", "pods", "-l", f"app.kubernetes.io/name={service}", "-o", "json"])
+        events = self._run(["-n", self.namespace, "get", "events", "-o", "json"])
+        spec, status = deployment.get("spec", {}), deployment.get("status", {})
+        pod_data = []
+        for pod in pods.get("items", []):
+            pod_status = pod.get("status", {})
+            pod_data.append({
+                "name": pod.get("metadata", {}).get("name"),
+                "phase": pod_status.get("phase"),
+                "ready": self._ready(pod),
+                "restarts": sum(c.get("restartCount", 0) for c in pod_status.get("containerStatuses", [])),
+                "conditions": pod_status.get("conditions", []),
+            })
+        warnings = [
+            {"reason": e.get("reason"), "message": e.get("message"), "type": e.get("type"), "lastTimestamp": e.get("lastTimestamp")}
+            for e in events.get("items", [])
+            if e.get("type") == "Warning" and (e.get("involvedObject", {}).get("name", "").startswith(service) or e.get("involvedObject", {}).get("kind") == "Deployment" and e.get("involvedObject", {}).get("name") == service)
+        ]
+        try:
+            logs = self.get_logs(service, tail_lines)
+        except RuntimeError as error:
+            # A replacement pod can be Pending/ContainerCreating during a real
+            # incident. Preserve the observation and make log unavailability
+            # explicit instead of losing the investigation package.
+            logs = f"[logs unavailable during observation: {error}]"
+        return ServiceObservation.now(service, desired_replicas=spec.get("replicas", 0), ready_replicas=status.get("readyReplicas", 0), available_replicas=status.get("availableReplicas", 0), pods=pod_data, warnings=warnings, logs=logs)
 
     def restart_service(self, service: str) -> OperationResult:
         service = self._name(service, "service")

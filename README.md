@@ -10,6 +10,7 @@ Phase 2 adds a real MetaMynd authorization boundary in front of consequential op
 - The same constrained tool layer performs real deployment restart and scaling operations.
 - A reversible scale-to-zero failure is observed and remediated through the tool layer.
 - Application-facing restart/scale calls fail closed unless the remote MetaMynd gate returns `allow` or `observe`.
+- A bounded monitor, deterministic health classifier, SQLite evidence store, investigation package, and isolated pod-fault scenario harness are included.
 
 The demo, Kubernetes API responses, pod transitions, and logs are real. Unit tests use controlled runner fixtures; the live smoke test never mocks Kubernetes.
 
@@ -31,6 +32,12 @@ make sandbox-test     # real inspect/restart/scale/failure/recovery experiment
 make sandbox-reset    # uninstall and recreate the demo namespace
 make sandbox-down     # delete the kind cluster
 make unit-test        # unit tests for the operations adapter
+```
+
+Run the real observation lifecycle against the local cluster:
+
+```bash
+PYTHONPATH=src python3 scripts/monitor_scenario.py
 ```
 
 Before write commands, provision a hosted Testnet agent and place its local
@@ -59,6 +66,9 @@ future agent / MetaMynd boundary (not implemented)
 
 - `src/ops_provider/` — provider protocol, structured result model, constrained Kubernetes implementation, CLI.
 - `metamynd/authorize.mjs` — minimal official SDK adapter; it does not implement MAGP signing.
+- `src/ops_provider/monitor.py`, `health.py`, `investigation.py` — bounded observation and evidence preparation.
+- `src/ops_provider/evidence.py` — local SQLite observations/transitions/incidents store.
+- `src/ops_provider/scenarios.py` — test-only reversible fault injection, never an agent tool.
 - `scripts/` — reproducible kind/Helm lifecycle and live experiment.
 - `tests/` — unit tests; no live-cluster behavior is mocked into the experiment.
 - `docs/ARCHITECTURE.md` — trust and execution boundary.

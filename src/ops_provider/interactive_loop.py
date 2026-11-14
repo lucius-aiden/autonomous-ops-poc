@@ -36,8 +36,9 @@ class BoundedInteractiveAgentLoop:
 
     def run(self, initial_observation: dict) -> dict:
         started = time.monotonic()
-        state = {"initial_observation": initial_observation, "tool_results": []}
-        trajectory = [{"kind": "initial_observation", "value": initial_observation}]
+        compact_initial = self._compact(initial_observation)
+        state = {"initial_observation": compact_initial, "tool_results": []}
+        trajectory = [{"kind": "initial_observation", "value": compact_initial}]
         model_calls = 0
         for step in range(self.max_steps):
             if time.monotonic() - started >= self.max_elapsed_seconds or model_calls >= self.max_model_calls:
@@ -48,7 +49,7 @@ class BoundedInteractiveAgentLoop:
             try:
                 turn = self.reasoning.decide_turn(state)
             except Exception as error:
-                return self._record(self._stopped(trajectory, "reasoning_error", str(error)))
+                return self._record(self._stopped(trajectory, "reasoning_error", type(error).__name__))
             trajectory.append({"kind": "model_decision", "step": step, "value": turn})
             if not isinstance(turn, dict) or turn.get("type") not in {"tool", "final"}:
                 return self._record(self._stopped(trajectory, "malformed_turn"))
@@ -60,8 +61,9 @@ class BoundedInteractiveAgentLoop:
                 except (ToolContractError, ValueError, RuntimeError) as error:
                     trajectory.append({"kind": "tool_error", "tool": turn.get("tool"), "error": str(error)})
                     return self._record(self._stopped(trajectory, "tool_contract_error", str(error)))
-                state["tool_results"].append({"tool": turn["tool"], "result": result})
-                trajectory.append({"kind": "tool_result", "tool": turn["tool"], "value": result})
+                compact_result = self._compact(result)
+                state["tool_results"].append({"tool": turn["tool"], "result": compact_result})
+                trajectory.append({"kind": "tool_result", "tool": turn["tool"], "value": compact_result})
                 continue
             try:
                 decision = OperationalDecision.from_dict(turn.get("decision"))
@@ -73,6 +75,21 @@ class BoundedInteractiveAgentLoop:
     def _record(self, result: dict) -> dict:
         if self.evidence_store is not None:
             self.evidence_store.record_event("agent_trajectory", datetime.now(timezone.utc).isoformat(), result)
+        return result
+
+    @staticmethod
+    def _compact(value):
+        if not isinstance(value, dict):
+            return value
+        result = dict(value)
+        if isinstance(result.get("logs"), str):
+            result["logs"] = result["logs"][-2000:]
+        if isinstance(result.get("observation"), dict):
+            result["observation"] = BoundedInteractiveAgentLoop._compact(result["observation"])
+        if isinstance(result.get("pods"), list):
+            result["pods"] = result["pods"][:10]
+        if isinstance(result.get("tool_results"), list):
+            result["tool_results"] = [{"tool": item.get("tool"), "result": BoundedInteractiveAgentLoop._compact(item.get("result", {}))} for item in result["tool_results"]]
         return result
 
     def _execute(self, decision: OperationalDecision, trajectory: list[dict]) -> dict:

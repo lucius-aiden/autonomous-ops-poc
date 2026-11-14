@@ -13,6 +13,14 @@ def _decision(**overrides):
 
 
 class GroqSchemaTests(unittest.TestCase):
+    def _provider_result(self, value):
+        provider = GroqReasoningProvider(api_key="test", response_mode="json_object", timeout=1)
+        class Reply:
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+        with patch("urllib.request.urlopen", return_value=Reply()), patch("json.load", return_value={"choices": [{"message": {"content": json.dumps(value)}}]}):
+            return provider.decide({})
+
     def test_every_object_is_closed_and_all_properties_required(self):
         def walk(schema):
             if schema.get("type") == "object":
@@ -44,6 +52,28 @@ class GroqSchemaTests(unittest.TestCase):
         Reply.read = lambda self, *args: b""
         with patch("urllib.request.urlopen", return_value=Reply()), patch("json.load", return_value=response):
             with self.assertRaises(InvalidDecision): provider.decide({})
+
+    def test_json_object_observe_can_omit_irrelevant_parameters(self):
+        result = self._provider_result(_decision(parameters=None))
+        self.assertEqual(result.decision, "OBSERVE")
+
+    def test_json_object_rejects_missing_act_action(self):
+        value = _decision(decision="ACT", target="frontend", parameters={})
+        value.pop("requested_action")
+        with self.assertRaises(InvalidDecision): self._provider_result(value)
+
+    def test_json_object_rejects_missing_act_target(self):
+        value = _decision(decision="ACT", requested_action="service.restart", parameters={})
+        value.pop("target")
+        with self.assertRaises(InvalidDecision): self._provider_result(value)
+
+    def test_json_object_rejects_missing_scale_replicas(self):
+        value = _decision(decision="ACT", requested_action="service.scale", target="frontend", parameters={})
+        with self.assertRaises(InvalidDecision): self._provider_result(value)
+
+    def test_json_object_rejects_extra_consequential_values(self):
+        value = _decision(parameters={"replicas": 2, "context": None})
+        with self.assertRaises(InvalidDecision): self._provider_result(value)
 
 
 if __name__ == "__main__": unittest.main()

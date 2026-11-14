@@ -23,4 +23,5 @@ def build_reasoning_brief(investigation: dict) -> dict:
         "warnings": observation.get("warnings", [])[:5],
         "logs": observation.get("logs", "")[-1200:],
         "evidence_gaps": ["service reachability is not collected by the current provider"],
+        "risk_context": investigation.get("risk_context"),
     }

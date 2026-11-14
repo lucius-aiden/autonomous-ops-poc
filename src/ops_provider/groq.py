@@ -32,19 +32,24 @@ DECISION_SCHEMA = {
 
 
 class GroqReasoningProvider:
-    def __init__(self, model: str = "openai/gpt-oss-20b", api_key: str | None = None, endpoint: str = "https://api.groq.com/openai/v1/chat/completions", timeout: float = 60.0):
+    def __init__(self, model: str = "openai/gpt-oss-20b", api_key: str | None = None, endpoint: str = "https://api.groq.com/openai/v1/chat/completions", timeout: float = 60.0, response_mode: str | None = None):
         self.model = model or os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b")
         self.api_key = api_key or os.environ.get("GROQ_API_KEY")
         self.endpoint, self.timeout = endpoint, timeout
+        self.response_mode = response_mode or os.environ.get("GROQ_RESPONSE_MODE", "json_object")
+        self.last_raw = None
+        if self.response_mode not in {"json_object", "json_schema"}:
+            raise ValueError("GROQ_RESPONSE_MODE must be json_object or json_schema")
         if not self.api_key:
             raise RuntimeError("GROQ_API_KEY is required for live reasoning")
 
     def decide(self, investigation: dict) -> OperationalDecision:
+        response_format = {"type": "json_object"} if self.response_mode == "json_object" else {"type": "json_schema", "json_schema": {"name": "operational_decision", "strict": True, "schema": DECISION_SCHEMA}}
         body = json.dumps({
             "model": self.model,
             "messages": [{"role": "user", "content": build_prompt(investigation)}],
             "temperature": 0,
-            "response_format": {"type": "json_schema", "json_schema": {"name": "operational_decision", "strict": True, "schema": DECISION_SCHEMA}},
+            "response_format": response_format,
         }).encode()
         request = urllib.request.Request(self.endpoint, data=body, headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json", "User-Agent": "autonomous-ops-poc/2.0 (https://github.com/lucius-aiden/autonomous-ops-poc)"})
         try:
@@ -58,10 +63,17 @@ class GroqReasoningProvider:
         try:
             text = payload["choices"][0]["message"]["content"]
             value = json.loads(text)
+            self.last_raw = value.copy() if isinstance(value, dict) else value
             # Strict schemas require both parameter keys; remove inactive nulls
             # before applying the existing bounded OperationalDecision validator.
-            params = value.get("parameters", {})
-            if isinstance(params, dict):
+            if "decision" not in value:
+                raise InvalidDecision("model output is missing decision")
+            # JSON Object Mode may omit irrelevant parameters for OBSERVE/
+            # ESCALATE. Never normalize ACT: consequential omissions fail closed.
+            if value["decision"] in {"OBSERVE", "ESCALATE"} and "parameters" not in value:
+                value["parameters"] = {}
+            params = value.get("parameters")
+            if isinstance(params, dict) and value["decision"] in {"OBSERVE", "ESCALATE"}:
                 value["parameters"] = {key: item for key, item in params.items() if item is not None}
             return OperationalDecision.from_dict(value)
         except (KeyError, IndexError, TypeError, json.JSONDecodeError) as error:

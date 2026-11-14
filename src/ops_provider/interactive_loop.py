@@ -36,9 +36,9 @@ class BoundedInteractiveAgentLoop:
 
     def run(self, initial_observation: dict) -> dict:
         started = time.monotonic()
-        compact_initial = self._compact(initial_observation)
+        compact_initial = self._initial_context(initial_observation)
         state = {"initial_observation": compact_initial, "tool_results": []}
-        trajectory = [{"kind": "initial_observation", "value": compact_initial}]
+        trajectory = [{"kind": "initial_observation", "value": initial_observation}]
         model_calls = 0
         for step in range(self.max_steps):
             if time.monotonic() - started >= self.max_elapsed_seconds or model_calls >= self.max_model_calls:
@@ -63,7 +63,7 @@ class BoundedInteractiveAgentLoop:
                     return self._record(self._stopped(trajectory, "tool_contract_error", str(error)))
                 compact_result = self._compact(result)
                 state["tool_results"].append({"tool": turn["tool"], "result": compact_result})
-                trajectory.append({"kind": "tool_result", "tool": turn["tool"], "value": compact_result})
+                trajectory.append({"kind": "tool_result", "tool": turn["tool"], "value": result})
                 continue
             try:
                 decision = OperationalDecision.from_dict(turn.get("decision"))
@@ -78,6 +78,17 @@ class BoundedInteractiveAgentLoop:
         return result
 
     @staticmethod
+    def _initial_context(value):
+        observation = value.get("observation", {}) if isinstance(value, dict) else {}
+        trigger = value.get("trigger", {}) if isinstance(value, dict) else {}
+        return {"service": value.get("service", observation.get("service")) if isinstance(value, dict) else None,
+                "environment": "ops-sandbox", "health": trigger.get("health", value.get("health")) if isinstance(trigger, dict) else None,
+                "desired_replicas": observation.get("desired_replicas"), "ready_replicas": observation.get("ready_replicas"),
+                "available_replicas": observation.get("available_replicas"), "observed_at": observation.get("observed_at"),
+                "incident_id": value.get("incident_id") if isinstance(value, dict) else None,
+                "reason": value.get("reason", "monitor observation requires investigation") if isinstance(value, dict) else "monitor observation requires investigation"}
+
+    @staticmethod
     def _compact(value):
         if not isinstance(value, dict):
             return value
@@ -87,7 +98,9 @@ class BoundedInteractiveAgentLoop:
         if isinstance(result.get("observation"), dict):
             result["observation"] = BoundedInteractiveAgentLoop._compact(result["observation"])
         if isinstance(result.get("pods"), list):
-            result["pods"] = result["pods"][:10]
+            result["pods"] = [{key: pod.get(key) for key in ("name", "phase", "ready", "restarts", "reason", "age") if key in pod} for pod in result["pods"][:10] if isinstance(pod, dict)]
+        if isinstance(result.get("observation"), dict) and isinstance(result["observation"].get("pods"), list):
+            result["observation"]["pods"] = [{key: pod.get(key) for key in ("name", "phase", "ready", "restarts", "reason", "age") if key in pod} for pod in result["observation"]["pods"][:10] if isinstance(pod, dict)]
         if isinstance(result.get("tool_results"), list):
             result["tool_results"] = [{"tool": item.get("tool"), "result": BoundedInteractiveAgentLoop._compact(item.get("result", {}))} for item in result["tool_results"]]
         return result

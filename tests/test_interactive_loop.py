@@ -1,8 +1,10 @@
 import unittest
+import tempfile
 
 from ops_provider.agent_tools import ReadOnlyToolRegistry, ToolContractError
 from ops_provider.governed import GovernedOperations
 from ops_provider.interactive_loop import BoundedInteractiveAgentLoop
+from ops_provider.evidence import EvidenceStore
 from ops_provider.models import OperationResult, ServiceObservation
 
 
@@ -33,6 +35,24 @@ def final(decision="OBSERVE", action=None, target=None, parameters={}):
 
 
 class InteractiveLoopTests(unittest.TestCase):
+    def test_initial_context_is_minimal_but_trajectory_keeps_full_observation(self):
+        provider = Provider()
+        full = {"service": "frontend", "observation": {"desired_replicas": 1, "ready_replicas": 0, "available_replicas": 0, "logs": "x" * 10000, "pods": [{"name": "p", "conditions": [{"verbose": "x"}]}]}, "trigger": {"health": "UNHEALTHY"}, "hidden": "do not send"}
+        class Inspect:
+            def decide_turn(self, state):
+                self.state = state
+                return {"type": "final", "decision": {"decision": "OBSERVE", "summary": "s", "diagnosis": "d", "confidence": .8, "requested_action": None, "target": None, "parameters": {}, "reason": "r", "verification_plan": "v"}}
+        reasoning = Inspect()
+        result = BoundedInteractiveAgentLoop(reasoning, provider, GovernedOperations(provider, Authorizer({"decision": "allow"}))).run(full)
+        self.assertNotIn("hidden", reasoning.state["initial_observation"])
+        self.assertNotIn("logs", reasoning.state["initial_observation"])
+        self.assertEqual(len(result["trajectory"][0]["value"]["observation"]["logs"]), 10000)
+
+    def test_evidence_accepts_benign_token_text_but_rejects_secret_keys(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = EvidenceStore(f"{directory}/evidence.sqlite3")
+            store.record_event("error", "now", {"message": "TPM token limit reached"})
+            with self.assertRaises(ValueError): store.record_event("secret", "now", {"token": "actual-secret"})
     def test_agent_selects_read_tools_and_receives_results(self):
         provider = Provider()
         result = BoundedInteractiveAgentLoop(Reasoning([{"type": "tool", "tool": "get_logs", "arguments": {"service": "frontend", "tail_lines": 10}}, final()]), provider, GovernedOperations(provider, Authorizer({"decision": "allow"}))).run({"trigger": "degraded"})

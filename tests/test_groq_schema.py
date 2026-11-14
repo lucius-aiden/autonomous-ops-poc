@@ -75,5 +75,28 @@ class GroqSchemaTests(unittest.TestCase):
         value = _decision(parameters={"replicas": 2, "context": None})
         with self.assertRaises(InvalidDecision): self._provider_result(value)
 
+    def _turn_result(self, value):
+        provider = GroqReasoningProvider(api_key="test", response_mode="json_object", timeout=1)
+        class Reply:
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+        with patch("urllib.request.urlopen", return_value=Reply()), patch("json.load", return_value={"choices": [{"message": {"content": json.dumps(value)}}]}):
+            return provider.decide_turn({"initial_observation": {}, "tool_results": []})
+
+    def test_interactive_read_tools_are_accepted(self):
+        for tool, arguments in (("inspect_service", {"service": "frontend"}), ("get_service_health", {"service": "frontend"}), ("get_pods", {"service": "frontend"}), ("get_logs", {"service": "frontend", "tail_lines": 20})):
+            self.assertEqual(self._turn_result({"type": "tool", "tool": tool, "arguments": arguments})["tool"], tool)
+
+    def test_interactive_final_decisions_are_accepted(self):
+        for kind in ("OBSERVE", "ESCALATE", "ACT"):
+            value = _decision(decision=kind)
+            if kind == "ACT": value.update(requested_action="service.restart", target="frontend", parameters={})
+            self.assertEqual(self._turn_result({"type": "final", "decision": value})["decision"]["decision"], kind)
+
+    def test_interactive_rejects_unknown_or_malformed_tools(self):
+        with self.assertRaises(InvalidDecision): self._turn_result({"type": "tool", "tool": "kubectl", "arguments": {"service": "frontend"}})
+        with self.assertRaises(InvalidDecision): self._turn_result({"type": "tool", "tool": "get_logs", "arguments": {"service": "frontend", "tail_lines": "many"}})
+        with self.assertRaises(InvalidDecision): self._turn_result({"type": "wat"})
+
 
 if __name__ == "__main__": unittest.main()

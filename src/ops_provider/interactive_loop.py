@@ -6,6 +6,7 @@ proposal; MetaMynd remains the authority gate for writes.
 """
 
 import time
+from datetime import datetime, timezone
 from dataclasses import asdict
 
 from .agent_tools import ReadOnlyToolRegistry, ToolContractError
@@ -22,7 +23,8 @@ class InteractiveLoopLimit(RuntimeError):
 class BoundedInteractiveAgentLoop:
     def __init__(self, reasoning, provider: KubernetesProvider, governed: GovernedOperations,
                  tools: ReadOnlyToolRegistry | None = None, max_steps: int = 5,
-                 max_model_calls: int = 6, max_elapsed_seconds: float = 60.0):
+                 max_model_calls: int = 6, max_elapsed_seconds: float = 60.0,
+                 evidence_store=None):
         self.reasoning = reasoning
         self.provider = provider
         self.governed = governed
@@ -30,6 +32,7 @@ class BoundedInteractiveAgentLoop:
         self.max_steps = max_steps
         self.max_model_calls = max_model_calls
         self.max_elapsed_seconds = max_elapsed_seconds
+        self.evidence_store = evidence_store
 
     def run(self, initial_observation: dict) -> dict:
         started = time.monotonic()
@@ -38,34 +41,39 @@ class BoundedInteractiveAgentLoop:
         model_calls = 0
         for step in range(self.max_steps):
             if time.monotonic() - started >= self.max_elapsed_seconds or model_calls >= self.max_model_calls:
-                return self._stopped(trajectory, "orchestration_limit")
+                return self._record(self._stopped(trajectory, "orchestration_limit"))
             if not hasattr(self.reasoning, "decide_turn"):
-                return self._stopped(trajectory, "provider_does_not_support_interactive_turns")
+                return self._record(self._stopped(trajectory, "provider_does_not_support_interactive_turns"))
             model_calls += 1
             try:
                 turn = self.reasoning.decide_turn(state)
             except Exception as error:
-                return self._stopped(trajectory, "reasoning_error", str(error))
+                return self._record(self._stopped(trajectory, "reasoning_error", str(error)))
             trajectory.append({"kind": "model_decision", "step": step, "value": turn})
             if not isinstance(turn, dict) or turn.get("type") not in {"tool", "final"}:
-                return self._stopped(trajectory, "malformed_turn")
+                return self._record(self._stopped(trajectory, "malformed_turn"))
             if turn["type"] == "tool":
                 if time.monotonic() - started >= self.max_elapsed_seconds:
-                    return self._stopped(trajectory, "orchestration_limit")
+                    return self._record(self._stopped(trajectory, "orchestration_limit"))
                 try:
                     result = self.tools.call(turn.get("tool"), turn.get("arguments"))
                 except (ToolContractError, ValueError, RuntimeError) as error:
                     trajectory.append({"kind": "tool_error", "tool": turn.get("tool"), "error": str(error)})
-                    return self._stopped(trajectory, "tool_contract_error", str(error))
+                    return self._record(self._stopped(trajectory, "tool_contract_error", str(error)))
                 state["tool_results"].append({"tool": turn["tool"], "result": result})
                 trajectory.append({"kind": "tool_result", "tool": turn["tool"], "value": result})
                 continue
             try:
                 decision = OperationalDecision.from_dict(turn.get("decision"))
             except (InvalidDecision, TypeError) as error:
-                return self._stopped(trajectory, "invalid_final_decision", str(error))
-            return self._execute(decision, trajectory)
-        return self._stopped(trajectory, "orchestration_limit")
+                return self._record(self._stopped(trajectory, "invalid_final_decision", str(error)))
+            return self._record(self._execute(decision, trajectory))
+        return self._record(self._stopped(trajectory, "orchestration_limit"))
+
+    def _record(self, result: dict) -> dict:
+        if self.evidence_store is not None:
+            self.evidence_store.record_event("agent_trajectory", datetime.now(timezone.utc).isoformat(), result)
+        return result
 
     def _execute(self, decision: OperationalDecision, trajectory: list[dict]) -> dict:
         result = {"status": "completed", "decision": asdict(decision), "trajectory": trajectory,

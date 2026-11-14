@@ -5,6 +5,7 @@ from ops_provider.agent_tools import ReadOnlyToolRegistry, ToolContractError
 from ops_provider.governed import GovernedOperations
 from ops_provider.interactive_loop import BoundedInteractiveAgentLoop
 from ops_provider.evidence import EvidenceStore
+from ops_provider.reasoning import InvalidDecision
 from ops_provider.models import OperationResult, ServiceObservation
 
 
@@ -30,6 +31,14 @@ class Reasoning:
     def decide_turn(self, state): return next(self.turns)
 
 
+class RejectingReasoning:
+    last_raw = {"type": "final", "decision": {"decision": "ACT", "requested_action": "service.scale", "target": "frontend", "parameters": {"replicas": "unknown"}, "token": "benign-field-test"}}
+    last_raw_text = '{"type":"final","decision":{"decision":"ACT","requested_action":"service.scale","target":"frontend","parameters":{"replicas":"unknown"}},"token":"benign-field-test"}'
+    last_validation_stage = "final_decision_validation_failed"
+    last_usage = {"total_tokens": 12}
+    def decide_turn(self, state): raise InvalidDecision("scale replicas must be an integer")
+
+
 def final(decision="OBSERVE", action=None, target=None, parameters={}):
     return {"type": "final", "decision": {"decision": decision, "summary": "s", "diagnosis": "d", "confidence": .8, "requested_action": action, "target": target, "parameters": parameters, "reason": "r", "verification_plan": "v"}}
 
@@ -53,6 +62,18 @@ class InteractiveLoopTests(unittest.TestCase):
             store = EvidenceStore(f"{directory}/evidence.sqlite3")
             store.record_event("error", "now", {"message": "TPM token limit reached"})
             with self.assertRaises(ValueError): store.record_event("secret", "now", {"token": "actual-secret"})
+
+    def test_rejected_raw_turn_is_persisted_without_execution(self):
+        provider = Provider()
+        with tempfile.TemporaryDirectory() as directory:
+            store = EvidenceStore(f"{directory}/evidence.sqlite3")
+            result = BoundedInteractiveAgentLoop(RejectingReasoning(), provider, GovernedOperations(provider, Authorizer({"decision": "allow"})), evidence_store=store).run({"service": "frontend"})
+            self.assertEqual(result["stop_reason"], "reasoning_error")
+            event = store.events()[-1]
+            self.assertIn("raw_response", event["payload"])
+            self.assertIn("final_decision_validation_failed", event["payload"])
+            self.assertIn("<REDACTED>", event["payload"])
+            self.assertEqual(provider.calls, [])
     def test_agent_selects_read_tools_and_receives_results(self):
         provider = Provider()
         result = BoundedInteractiveAgentLoop(Reasoning([{"type": "tool", "tool": "get_logs", "arguments": {"service": "frontend", "tail_lines": 10}}, final()]), provider, GovernedOperations(provider, Authorizer({"decision": "allow"}))).run({"trigger": "degraded"})

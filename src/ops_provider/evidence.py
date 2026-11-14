@@ -30,7 +30,7 @@ class EvidenceStore:
     def _contains_secret_key(value: Any) -> bool:
         secret_names = {"privatekey", "agentkey", "password", "token", "secret", "api_key", "apikey"}
         if isinstance(value, dict):
-            return any(str(key).lower().replace("-", "_") in secret_names or EvidenceStore._contains_secret_key(item) for key, item in value.items())
+            return any((str(key).lower().replace("-", "_") in secret_names and item != "<REDACTED>") or EvidenceStore._contains_secret_key(item) for key, item in value.items())
         if isinstance(value, list):
             return any(EvidenceStore._contains_secret_key(item) for item in value)
         return False

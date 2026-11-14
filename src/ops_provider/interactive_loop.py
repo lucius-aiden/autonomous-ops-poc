@@ -50,8 +50,9 @@ class BoundedInteractiveAgentLoop:
             try:
                 turn = self.reasoning.decide_turn(state)
             except Exception as error:
+                trajectory.append(self._raw_turn_evidence(step, turn_started, error))
                 return self._record(self._stopped(trajectory, "reasoning_error", type(error).__name__))
-            trajectory.append({"kind": "model_decision", "step": step, "value": turn, "latency_seconds": time.perf_counter() - turn_started, "usage": getattr(self.reasoning, "last_usage", None)})
+            trajectory.append({"kind": "model_decision", "step": step, "value": turn, "raw_response": self._redact(getattr(self.reasoning, "last_raw", None)), "raw_response_text": self._redact(getattr(self.reasoning, "last_raw_text", None)), "validation_stage": getattr(self.reasoning, "last_validation_stage", "interactive_turn_accepted"), "latency_seconds": time.perf_counter() - turn_started, "usage": getattr(self.reasoning, "last_usage", None)})
             if not isinstance(turn, dict) or turn.get("type") not in {"tool", "final"}:
                 return self._record(self._stopped(trajectory, "malformed_turn"))
             if turn["type"] == "tool":
@@ -77,6 +78,20 @@ class BoundedInteractiveAgentLoop:
         if self.evidence_store is not None:
             self.evidence_store.record_event("agent_trajectory", datetime.now(timezone.utc).isoformat(), result)
         return result
+
+    def _raw_turn_evidence(self, step, started, error):
+        return {"kind": "model_decision", "step": step, "raw_response": self._redact(getattr(self.reasoning, "last_raw", None)), "raw_response_text": self._redact(getattr(self.reasoning, "last_raw_text", None)), "validation_stage": getattr(self.reasoning, "last_validation_stage", "validation_failed"), "validation_error": str(error), "latency_seconds": time.perf_counter() - started, "usage": getattr(self.reasoning, "last_usage", None)}
+
+    @staticmethod
+    def _redact(value):
+        if isinstance(value, dict):
+            secret_keys = {"token", "password", "privatekey", "agentkey", "api_key", "apikey", "secret", "authorization"}
+            return {key: "<REDACTED>" if str(key).lower().replace("-", "_") in secret_keys else BoundedInteractiveAgentLoop._redact(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [BoundedInteractiveAgentLoop._redact(item) for item in value]
+        if isinstance(value, str) and value.lower().startswith(("bearer ", "sk-", "gsk_")):
+            return "<REDACTED>"
+        return value
 
     @staticmethod
     def _initial_context(value):

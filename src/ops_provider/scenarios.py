@@ -104,13 +104,13 @@ class ProcessLocalWedgeScenario:
         pod = self._current_pod()
         if not pod:
             raise RuntimeError("setup must run first")
-        code = (
-            "import urllib.request, urllib.error; "
-            "exec(\"try:\\n print(urllib.request.urlopen('http://127.0.0.1:8080/health').status)\n"
-            "except urllib.error.HTTPError as e:\\n print(e.code)\")"
-        )
+        code = "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8080/health').status)"
         completed = self.provider._runner(["kubectl", "-n", self.provider.namespace, "exec", pod, "--", "python", "-c", code], capture_output=True, text=True, check=False)
-        return completed.stdout.strip() if completed.returncode == 0 else f"error:{completed.stderr.strip()}"
+        if completed.returncode == 0:
+            return completed.stdout.strip()
+        if "HTTP Error 503" in completed.stderr:
+            return "503"
+        return f"error:{completed.stderr.strip()}"
 
     def inject(self) -> dict:
         self._localhost("/__test__/wedge")

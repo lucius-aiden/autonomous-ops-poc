@@ -46,6 +46,12 @@ investigation package (DATA)
         -> post-action observation + evidence
 ```
 
+The decision parser validates only whether a proposed bounded tool call is
+structurally executable. It does not decide whether the action is wise,
+necessary, or delegated. A well-formed proposal is preserved and sent to
+MetaMynd unchanged; operational quality is measured independently by the
+evaluator. See `docs/VALIDATION_BOUNDARY.md`.
+
 The reasoning provider has no shell, kubectl, Docker, credential or arbitrary HTTP tool.
 The local Ollama provider is selectable by model name; an OpenAI Responses provider is
 available only when an API key is explicitly supplied. Both return untrusted text that

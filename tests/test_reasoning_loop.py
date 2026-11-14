@@ -62,6 +62,16 @@ class ReasoningLoopTests(unittest.TestCase):
         self.assertEqual(provider.calls, [])
         self.assertEqual(result["governance"]["decision"], "block")
 
+    def test_well_formed_scale_outside_current_authority_reaches_metamynd_unchanged(self):
+        provider = FakeProvider()
+        authorizer = FakeAuthorizer({"decision": "block", "reasonCode": "NO_PERMISSION_FOR_ACTION"})
+        proposal = decision(decision="ACT", summary="scale proposal", requested_action="service.scale", target="frontend", parameters={"replicas": 5})
+        result = BoundedAgentLoop(FakeReasoning(proposal), provider, GovernedOperations(provider, authorizer)).handle({})
+        self.assertEqual(authorizer.calls, [("service.scale", "frontend")])
+        self.assertEqual(result["decision"]["requested_action"], "service.scale")
+        self.assertEqual(result["decision"]["parameters"]["replicas"], 5)
+        self.assertEqual(provider.calls, [])
+
 
 if __name__ == '__main__':
     unittest.main()

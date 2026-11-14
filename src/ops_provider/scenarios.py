@@ -67,5 +67,59 @@ class ScaledToZeroScenario:
         raise RuntimeError("scale-to-zero cleanup timed out")
 
 
+class ProcessLocalWedgeScenario:
+    """Privileged-only fault injector for the dedicated process-state workload.
+
+    Injection reaches localhost inside the selected pod through kubectl exec;
+    it is intentionally absent from all agent-facing tools. Restarting the
+    process creates a fresh Python interpreter and clears the module state.
+    """
+
+    def __init__(self, provider: KubernetesProvider, service: str = "process-state-demo"):
+        self.provider, self.service, self.pod = provider, service, None
+
+    def setup(self) -> dict:
+        observation = self.provider.observe_service(self.service)
+        if observation.desired_replicas != 1 or observation.ready_replicas != 1 or len(observation.pods) != 1:
+            raise RuntimeError("process-state scenario requires exactly one healthy pod")
+        self.pod = observation.pods[0]["name"]
+        return {"service": self.service, "pod": self.pod, "observation": observation}
+
+    def _localhost(self, path: str) -> str:
+        pod = self._current_pod()
+        if not pod:
+            raise RuntimeError("setup must run first")
+        code = (
+            "import urllib.request; "
+            f"r=urllib.request.urlopen('http://127.0.0.1:8080{path}'); "
+            "print(r.status); print(r.read().decode())"
+        )
+        return self.provider._run(["-n", self.provider.namespace, "exec", pod, "--", "python", "-c", code], json_output=False)
+
+    def _current_pod(self) -> str | None:
+        pods = self.provider.get_pods(self.service)
+        return pods[0]["name"] if pods else None
+
+    def health(self) -> str:
+        pod = self._current_pod()
+        if not pod:
+            raise RuntimeError("setup must run first")
+        code = (
+            "import urllib.request, urllib.error; "
+            "exec(\"try:\\n print(urllib.request.urlopen('http://127.0.0.1:8080/health').status)\n"
+            "except urllib.error.HTTPError as e:\\n print(e.code)\")"
+        )
+        completed = self.provider._runner(["kubectl", "-n", self.provider.namespace, "exec", pod, "--", "python", "-c", code], capture_output=True, text=True, check=False)
+        return completed.stdout.strip() if completed.returncode == 0 else f"error:{completed.stderr.strip()}"
+
+    def inject(self) -> dict:
+        self._localhost("/__test__/wedge")
+        return {"fault": "process_local_runtime_wedged", "service": self.service, "pod": self.pod}
+
+    def cleanup(self) -> dict:
+        health = self.health()
+        return {"cleaned": health == "200", "health": health, "pod": self._current_pod()}
+
+
 def scenario_id() -> str:
     return f"scenario-{uuid.uuid4().hex[:12]}"

@@ -46,11 +46,12 @@ class BoundedInteractiveAgentLoop:
             if not hasattr(self.reasoning, "decide_turn"):
                 return self._record(self._stopped(trajectory, "provider_does_not_support_interactive_turns"))
             model_calls += 1
+            turn_started = time.perf_counter()
             try:
                 turn = self.reasoning.decide_turn(state)
             except Exception as error:
                 return self._record(self._stopped(trajectory, "reasoning_error", type(error).__name__))
-            trajectory.append({"kind": "model_decision", "step": step, "value": turn})
+            trajectory.append({"kind": "model_decision", "step": step, "value": turn, "latency_seconds": time.perf_counter() - turn_started, "usage": getattr(self.reasoning, "last_usage", None)})
             if not isinstance(turn, dict) or turn.get("type") not in {"tool", "final"}:
                 return self._record(self._stopped(trajectory, "malformed_turn"))
             if turn["type"] == "tool":

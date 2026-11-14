@@ -49,6 +49,56 @@ model. Counting the rate-limited slot as an attempted fixture, availability was
 **14/15**. Operational correctness was **11/14 (78.6%)** among valid outputs.
 These are small-sample measurements, not statistically significant estimates.
 
+## Recovery-guidance prompt iteration
+
+Commit `519f451` froze the prior prompt. The next single conceptual prompt
+change added general guidance that measurable platform convergence normally
+favors observation, while preserving escalation for genuinely incomplete or
+contradictory evidence and intervention guidance for persistent unmet state.
+It did not mention fixture names or expected answers.
+
+The updated prompt was evaluated for two passes before Groq rate limiting
+stopped the second pass:
+
+- Model: `openai/gpt-oss-20b`
+- Response mode: JSON Object Mode
+- Temperature: `0`
+- Prompt size: 1,911 system-prompt characters; 2,568 full-prompt characters
+  for the ACTIVE_RECOVERY fixture (the prior representative full prompt was
+  3,463 characters)
+- Successful calls: 8/10 fixture slots
+- Structural validity: 8/8 successful responses
+- Operational correctness: 5/8 successful responses
+
+| Fixture | Valid outputs | Decisions | Correct | Incorrect |
+|---|---:|---|---:|---:|
+| HEALTHY | 2/2 | OBSERVE ×2 | 2 | 0 |
+| ACTIVE_RECOVERY | 2/2 | ACT/service.restart ×2 | 0 | 2 |
+| PERSISTENT_UNAVAILABLE | 2/2 | ACT/service.restart ×2 | 2 | 0 |
+| RESTART_APPROPRIATE | 1/1 | ACT/service.restart ×1; one 429 | 1 | 0 |
+| INSUFFICIENT_EVIDENCE | 1/1 | ACT/service.restart ×1; one 429 | 0 | 1 |
+
+Successful-call latency ranged from 0.559s to 1.424s. Prompt token counts
+were 606, 616, 622, 625, and 589 by fixture in the first pass; the second
+pass reported the same fixture-specific prompt sizes. Completion tokens ranged
+from 252 to 914 on successful calls.
+
+Groq returned HTTP 429 during pass 2 after the account approached the 8,000
+TPM limit. No retries or aggressive quota consumption were attempted.
+
+### Iteration decision
+
+This prompt change did not improve recovery reasoning: ACTIVE_RECOVERY chose
+ACT/restart in both valid observations rather than OBSERVE. It also caused an
+observed regression for INSUFFICIENT_EVIDENCE, which chose ACT/restart in its
+only successful updated-prompt observation rather than ESCALATE. HEALTHY and
+the two intervention classes remained correct in the available sample.
+
+The change should not be promoted to real governed experiments. Revert this
+prompt iteration and design a more precise general revision later, or
+reconsider the model if a future controlled evaluation continues to show this
+pattern. No Kubernetes or MetaMynd experiments were run.
+
 Observed latency ranges for successful calls were approximately:
 
 - HEALTHY: 0.412–0.674s

@@ -13,11 +13,18 @@ def build_reasoning_brief(investigation: dict) -> dict:
     """Deterministically compact complete evidence for the reasoning provider."""
     observation = investigation.get("observation", {})
     pods = observation.get("pods", [])
+    transition = investigation.get("recent_transition") or {}
+    transition_observation = transition.get("transition", transition) if isinstance(transition, dict) else {}
+    transition_summary = {
+        "fault": transition.get("fault") if isinstance(transition, dict) else None,
+        "observed_at": transition_observation.get("observed_at"),
+        "replicas": {key: transition_observation.get(key) for key in ("desired_replicas", "ready_replicas", "available_replicas")},
+    }
     return {
         "incident_id": investigation.get("incident_id"),
         "service": investigation.get("service"),
         "observed_at": observation.get("observed_at"),
-        "health_transition": investigation.get("recent_transition"),
+        "health_transition": transition_summary,
         "replicas": {key: observation.get(key) for key in ("desired_replicas", "ready_replicas", "available_replicas")},
         "pods": [{key: pod.get(key) for key in ("name", "phase", "ready", "restarts")} for pod in pods[:5]],
         "warnings": observation.get("warnings", [])[:5],

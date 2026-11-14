@@ -38,6 +38,7 @@ class GroqReasoningProvider:
         self.endpoint, self.timeout = endpoint, timeout
         self.response_mode = response_mode or os.environ.get("GROQ_RESPONSE_MODE", "json_object")
         self.last_raw = None
+        self.last_usage = None
         if self.response_mode not in {"json_object", "json_schema"}:
             raise ValueError("GROQ_RESPONSE_MODE must be json_object or json_schema")
         if not self.api_key:
@@ -64,6 +65,7 @@ class GroqReasoningProvider:
             text = payload["choices"][0]["message"]["content"]
             value = json.loads(text)
             self.last_raw = value.copy() if isinstance(value, dict) else value
+            self.last_usage = payload.get("usage")
             # Strict schemas require both parameter keys; remove inactive nulls
             # before applying the existing bounded OperationalDecision validator.
             if "decision" not in value:

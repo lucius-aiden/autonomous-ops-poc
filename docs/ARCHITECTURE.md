@@ -67,3 +67,26 @@ Before either write method executes, `MetaMyndAuthorizer` sends the typed action
 - Real: Docker, kind, Kubernetes resources, OpenTelemetry Demo images, pod state, deployment rollouts, scaling, and logs.
 - Synthetic: unit-test subprocess runner responses only.
 - Not implemented: autonomous reasoning, OpenRig, customer adapters, cloud APIs, frontend, MetaMynd, and production RBAC/security hardening.
+## Agent-selectable investigation
+
+The legacy `BoundedAgentLoop` remains a compatible single-shot path. The
+`BoundedInteractiveAgentLoop` adds a bounded trajectory for providers that
+implement `decide_turn`: the agent may request only registered read-only tools
+(`inspect_service`, `get_service_health`, `get_pods`, and `get_logs`) and then
+return a final `OperationalDecision`.
+
+The application enforces tool shape, namespace/name bounds, log limits, model
+call limits, step limits, and elapsed-time limits. It does not choose which
+evidence to gather or rewrite the agent's decision. A consequential final
+decision still crosses `GovernedOperations` and MetaMynd before the bounded
+Kubernetes executor. A stopped or malformed trajectory never invents a
+remediation.
+
+Read-only tools currently execute through the Kubernetes provider and are not
+sent through the consequential MetaMynd gate. Consequential `service.restart`
+and `service.scale` remain MetaMynd-governed. This reflects the current
+integration; it does not broaden any mandate.
+
+The interactive result retains the initial observation, every model turn,
+every tool request/result or error, final decision, authorization, execution,
+and verification as a trajectory suitable for evidence persistence.
